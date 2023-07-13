@@ -2,7 +2,7 @@ version: '3.8'
 services:
   traefik:
     image: "traefik:v2.9"
-    container_name: "joyldp_traefik"
+    container_name: "traefik"
     command:
       #- "--log.level=DEBUG"
       - "--api.insecure=true"
@@ -12,14 +12,77 @@ services:
       - "/var/run/docker.sock:/var/run/docker.sock:ro"
     ports:
       - "8080:4480"
-  react_server:
-    container_name: "joyldp_react_server"
+  phpmyadmin:
+    container_name: pma
+    image: phpmyadmin/phpmyadmin
+    labels:
+      - "traefik.http.routers.pma.rule=PathPrefix(`/pma`)"
+      - "traefik.http.routers.pma.entrypoints=web"
+      # Redirect /pma to /pma/
+      - "traefik.http.routers.pma.middlewares=strip-prefix"
+      - "traefik.http.middlewares.strip-prefix.chain.middlewares=strip-prefix-1,strip-prefix-2"
+      - "traefik.http.middlewares.strip-prefix-1.redirectregex.regex=^(https?://[^/]+/[a-z0-9_]+)$$"
+      - "traefik.http.middlewares.strip-prefix-1.redirectregex.replacement=$${1}/"
+      - "traefik.http.middlewares.strip-prefix-1.redirectregex.permanent=true"
+      - "traefik.http.middlewares.strip-prefix-2.stripprefixregex.regex=/[a-z0-9_]+"
+    restart: always
+    environment:
+      PMA_HOST: dbmysql
+      PMA_ABSOLUTE_URI: http://localhost/pma
+    depends_on:
+      - dbmysql
+  react-server:
+    container_name: "react-server"
     build:
       context: ./react_server
       dockerfile: Dockerfile
     labels:
-      - "traefik.http.routers.react_server-router.entrypoints=web"
-      - "traefik.http.routers.react_server-router.rule=Host(`localhost`)"
-      - "traefik.http.routers.react_server-router.service=react_server-service"
-      - "traefik.http.services.react_server-service.loadbalancer.server.port=3001"
+      - "traefik.http.routers.react-server-router.entrypoints=web"
+      - "traefik.http.routers.react-server-router.rule=Host(`localhost`)"
+      - "traefik.http.routers.react-server-router.service=react-server-service"
+      - "traefik.http.services.react-server-service.loadbalancer.server.port=3001"
+  authn-server:
+    container_name: "authn-server"
+    build:
+      context: ./authn_server
+      dockerfile: Dockerfile
+    labels:
+      - "traefik.http.routers.authn-server.rule=PathPrefix(`/authn-server`)"
+      - "traefik.http.routers.authn-server.entrypoints=web"
+      - "traefik.http.routers.authn-server.service=authn-server-service"
+      - "traefik.http.services.authn-server-service.loadbalancer.server.port=8080"
+      - "traefik.http.routers.authn-server.middlewares=authn-server-stripprefix"
+      - "traefik.http.middlewares.authn-server-stripprefix.stripprefix.prefixes=/authn-server"
+      - "traefik.http.middlewares.authn-server-stripprefix.stripprefix.forceSlash=false"
+  user-server:
+    container_name: "user-server"
+    build:
+      context: ./user_server
+      dockerfile: Dockerfile
+    ports:
+      - "9090:9090"
+    labels:
+      - "traefik.http.routers.user-server.rule=PathPrefix(`/user-server`)"
+      - "traefik.http.routers.user-server.entrypoints=web"
+      - "traefik.http.routers.user-server.service=user-server-service"
+      - "traefik.http.services.user-server-service.loadbalancer.server.port=9090"
+      - "traefik.http.routers.user-server.middlewares=user-server-stripprefix"
+      - "traefik.http.middlewares.user-server-stripprefix.stripprefix.prefixes=/user-server"
+      - "traefik.http.middlewares.user-server-stripprefix.stripprefix.forceSlash=false"
+  dbmysql:
+    container_name: "dbmysql"
+    image: mysql
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: MYSQL_DATABASE
+      MYSQL_USER: MYSQL_USER
+      MYSQL_PASSWORD: MYSQL_USER
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql-volume:/var/lib/mysql
+
+volumes:
+  mysql-volume:
 
