@@ -1,0 +1,25 @@
+version: '3.8'
+services:
+  traefik:
+    image: "traefik:v2.9"
+    container_name: "joyldp_traefik"
+    command:
+      #- "--log.level=DEBUG"
+      - "--api.insecure=true"
+      - "--providers.docker=true"
+      - "--entrypoints.web.address=:4480"
+    volumes:
+      - "/var/run/docker.sock:/var/run/docker.sock:ro"
+    ports:
+      - "8080:4480"
+  react_server:
+    container_name: "joyldp_react_server"
+    build:
+      context: ./react_server
+      dockerfile: Dockerfile
+    labels:
+      - "traefik.http.routers.react_server-router.entrypoints=web"
+      - "traefik.http.routers.react_server-router.rule=Host(`localhost`)"
+      - "traefik.http.routers.react_server-router.service=react_server-service"
+      - "traefik.http.services.react_server-service.loadbalancer.server.port=3001"
+
